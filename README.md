@@ -1,14 +1,14 @@
 # atomic-kiro
 
-[Atomic VCS](https://atomic.dev) integration for [Kiro IDE](https://kiro.dev).
+[Atomic VCS](https://atomic.dev) integration for [Kiro IDE](https://kiro.dev) and the Kiro CLI.
 
 Automatic turn recording with AI provenance, intent tracking, and knowledge graph skills.
 
 ## What it does
 
-- **1 session = 1 view** — a draft view is created automatically when you start working in Kiro
-- **Every turn records with provenance** — model, vendor, session, turn number, timing
-- **Tool executions tracked** — reads, edits, shell calls captured in a causal decision graph
+- **1 session = 1 view** — a draft view is created automatically when you start a session
+- **Every turn records with provenance** — model, vendor, session, turn number, causal decision graph
+- **Tool executions tracked** — reads, edits, shell calls captured in a provenance graph (IDE)
 - **Intent workflow** — AGENTS.md prompt guides problem-first development with vault intents
 - **Skills on demand** — `/atomic-vault` and `/code-intelligence` loaded when relevant
 - **Spec-driven integration** — hooks fire on task execution for Kiro's spec workflow
@@ -44,7 +44,7 @@ npx atomic-kiro
 
 - [Atomic VCS](https://atomic.dev) installed and on your PATH (`atomic --version`)
 - A project with an `.atomic/` repository (`atomic init`)
-- [Kiro IDE](https://kiro.dev) installed
+- [Kiro IDE](https://kiro.dev) or Kiro CLI installed
 
 ## Usage
 
@@ -55,7 +55,22 @@ cp /path/to/atomic-kiro/AGENTS.md .  # copy agent prompt
 # Open the project in Kiro — skills and steering activate automatically
 ```
 
-## Configuring hooks
+## IDE vs CLI
+
+atomic-kiro works in both the Kiro IDE and the Kiro CLI. The session model is the same — one view per session, one intent and one recorded change per turn — but how hooks fire differs.
+
+| | Kiro IDE | Kiro CLI |
+|---|---|---|
+| Session start | `prompt-submit.sh` writes session ID, orchestrator creates view | Agent writes session ID to `.atomic/kiro_session`, calls `prompt-submit` hook |
+| Turn start | PromptSubmit hook fires automatically | Agent calls `atomic agent hooks kiro prompt-submit` |
+| Tool tracking | PreToolUse / PostToolUse hooks fire per tool call | Not available (no hook mechanism in CLI) |
+| Turn end | AgentStop hook fires automatically | Agent calls `atomic agent hooks kiro agent-stop` |
+| Recording | Orchestrator runs `atomic add -A` + `atomic record` | Same — orchestrator handles it via hook call |
+| Provenance graph | goal + tool nodes + patch proposal | goal + patch proposal (no tool nodes) |
+
+The `AGENTS.md` prompt handles both paths — it detects the environment and follows the appropriate steps.
+
+## Configuring hooks (IDE)
 
 Kiro hooks are configured through the IDE panel. After running `install.sh`, set up these hooks:
 
@@ -73,7 +88,7 @@ Kiro hooks are configured through the IDE panel. After running `install.sh`, set
 | **Post Tool Use** (write, shell) | Shell Command | `/path/to/atomic-kiro/hooks/post-tool-use.sh` |
 | **Post Task Execution** | Shell Command | `/path/to/atomic-kiro/hooks/post-task-execution.sh` |
 
-### How hooks work
+### How hooks work (IDE)
 
 ```mermaid
 sequenceDiagram
@@ -88,30 +103,27 @@ sequenceDiagram
     U->>K: Send prompt
     K->>H: PromptSubmit trigger
     H->>H: Generate session ID, write .atomic/kiro_session
-    H->>R: atomic view create kiro-... --draft
-    H->>R: atomic view switch kiro-...
-    H->>O: prompt-submit + JSON (session_id, prompt, cwd)
-    O->>R: Orchestrator: create session, begin turn
+    H->>O: prompt-submit + JSON (session_id, model, prompt, cwd)
+    O->>R: Orchestrator: create session, fork draft view (haikunator name)
 
     Note over U,R: Agent turn
 
     K->>K: Agent decides to use a tool
     K->>H: PreToolUse trigger
-    H->>O: pre-tool-use + JSON (session_id)
+    H->>O: pre-tool-use + JSON (session_id, tool_name)
     O->>R: Orchestrator: log tool start in provenance graph
 
     K->>K: Agent executes tool (write, shell, ...)
 
     K->>H: PostToolUse trigger
-    H->>O: post-tool-use + JSON (session_id)
+    H->>O: post-tool-use + JSON (session_id, tool_name)
     O->>R: Orchestrator: log tool result in provenance graph
 
     Note over K: Agent may use more tools (repeat PreToolUse / PostToolUse)
 
     K->>H: AgentStop trigger
     H->>O: agent-stop + JSON (session_id)
-    O->>R: Orchestrator: end turn, status, add, record change
-    R-->>R: Change includes provenance + SessionEnvelope
+    O->>R: Orchestrator: add -A, record change with provenance + SessionEnvelope
 
     Note over U,R: Spec task completion (Kiro-specific)
 
@@ -119,7 +131,7 @@ sequenceDiagram
     H->>O: post-task + JSON (session_id)
     O->>R: Orchestrator: add + record with task provenance
 
-    Note over U,R: Next prompt (repeat)
+    Note over U,R: Next prompt (repeat turn)
 
     U->>K: Send another prompt
     K->>H: PromptSubmit trigger
@@ -132,7 +144,7 @@ Every Atomic change recorded by the hooks contains:
 - **SessionEnvelope** — session ID, turn number, timing, files modified
 - **Transcript** (optional) — compressed in the change's unhashed section
 
-You never need to run `atomic add` or `atomic record` — the hooks handle it.
+You never need to run `atomic add` or `atomic record` in the IDE — the hooks handle it.
 
 ## Viewing provenance
 
@@ -157,7 +169,7 @@ atomic agent attest
 | `skills/code-intelligence/` | KG query patterns (`/code-intelligence`) |
 | `skills/codebase-context/` | Codebase exploration (`/codebase-context`) |
 | `skills/intent-builder/` | Intent construction (`/intent-builder`) |
-| `hooks/` | Shell scripts for Kiro hook triggers |
+| `hooks/` | Shell scripts for Kiro IDE hook triggers |
 | `install.js` | Installs skills + steering into `~/.kiro/` |
 | `install.sh` | Development install |
 
@@ -172,6 +184,7 @@ atomic agent attest
 | Subagents | `~/.claude/agents/` | N/A (use skills + steering) |
 | Spec integration | N/A | Pre/Post Task Execution hooks |
 | Hook mechanism | `atomic agent enable --agent claude-code` | Shell scripts + IDE configuration |
+| CLI support | Native | Via AGENTS.md manual hook calls |
 
 ## Uninstall
 

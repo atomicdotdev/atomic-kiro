@@ -51,7 +51,8 @@ atomic vault goal list                  # List all goals
 ```bash
 atomic vault memory list                # List all memory entries
 atomic vault memory show <key>          # Show a specific memory entry
-atomic vault memory write <key> "val"   # Write a memory entry
+echo "value" | atomic vault memory write <key>   # Write a memory entry
+echo "value" | atomic vault memory write <key> --type feedback  # Write feedback memory
 ```
 
 ## The Intent File Is the Deliverable
@@ -96,7 +97,7 @@ Look for an existing intent that matches your task. Do NOT create duplicates.
 ### 2. Create ONE intent (if needed)
 
 ```bash
-atomic vault intent create "Implement user authentication"
+atomic vault intent create --title "Implement user authentication"
 ```
 
 Create exactly one intent per unit of work. Fill in the intent file at `.vault/intents/<id>/intent.md`.
@@ -104,7 +105,7 @@ Create exactly one intent per unit of work. Fill in the intent file at `.vault/i
 ### 3. Start a goal
 
 ```bash
-atomic vault goal start "auth-implementation"
+atomic vault goal start --name "auth-implementation"
 atomic vault intent link <intent-id> --goal auth-implementation
 ```
 
@@ -164,6 +165,58 @@ atomic view switch auth-feature         # Switch back to the draft view
 # Continue working...
 ```
 
+## Learning from Redirected Prompts
+
+When a user cancels, redirects, or corrects your approach mid-turn, treat it as a learning signal. Write a memory entry so the same mistake isn't repeated in future sessions.
+
+### When to write a redirect memory
+
+- User says "no, that's not what I meant" or "stop, do it differently"
+- User cancels a tool call or asks you to undo an action
+- User corrects an assumption you made about their codebase, workflow, or preferences
+- User redirects the approach after seeing your plan
+
+### How to write it
+
+```bash
+echo "<what was tried> -> <why it was wrong> -> <what to do instead>" \
+  | atomic vault memory write "redirect/<short-slug>" --type feedback
+```
+
+**Examples:**
+
+```bash
+# User corrected a wrong tool choice
+echo "Used grep to search code -> user prefers atomic vault query -> always try atomic query first" \
+  | atomic vault memory write "redirect/no-grep-use-atomic" --type feedback
+
+# User redirected an architectural decision
+echo "Added a new abstraction layer -> user wants minimal code -> match existing patterns only" \
+  | atomic vault memory write "redirect/no-new-abstractions" --type feedback
+
+# User cancelled a destructive action
+echo "Attempted to delete files without asking -> always confirm before any destructive operation" \
+  | atomic vault memory write "redirect/confirm-before-delete" --type feedback
+```
+
+### Key naming convention
+
+Use `redirect/<slug>` as the key so redirect memories are grouped and easy to scan:
+
+```bash
+atomic vault memory list | grep redirect/
+```
+
+### Check redirect memories at session start
+
+At the start of a new session, scan for redirect memories to apply learned preferences:
+
+```bash
+atomic vault memory list
+```
+
+Look for any `redirect/` entries relevant to the current task and apply them proactively.
+
 ## Tips
 
 - One intent per unit of work — keep them focused
@@ -171,3 +224,4 @@ atomic view switch auth-feature         # Switch back to the draft view
 - Fill in the intent markdown completely before starting implementation
 - Use `atomic vault sync` after editing any vault markdown files
 - Draft views keep your work isolated until it's ready to insert into a shared view
+- Write `redirect/` memories immediately when a user corrects your approach — don't wait until end of turn

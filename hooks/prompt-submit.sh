@@ -24,18 +24,17 @@ if ! command -v atomic &>/dev/null; then
 fi
 
 # Resolve a stable session ID for this Kiro window.
-# We store it in .atomic/kiro_session so all hooks in the same
-# workspace share the same session.
+# Stored in .atomic/kiro_session so all hooks share the same session.
+# The orchestrator owns view creation — we just provide a stable session ID.
 SESSION_FILE=".atomic/kiro_session"
 if [ -f "$SESSION_FILE" ]; then
   SESSION_ID=$(cat "$SESSION_FILE")
 else
-  SESSION_ID="kiro-$(date +%Y%m%d-%H%M%S)"
+  # Use hex timestamp so extract_session_short produces a unique 4-char tag
+  # e.g. "a3f2b1c4-kiro" → tag "a3f2"
+  HEX=$(printf '%08x' "$(date +%s)")
+  SESSION_ID="${HEX}-kiro"
   echo "$SESSION_ID" > "$SESSION_FILE"
-
-  # First prompt in this session — create a draft view
-  atomic view create "$SESSION_ID" --draft 2>/dev/null || true
-  atomic view switch "$SESSION_ID" 2>/dev/null || true
 fi
 
 # Build JSON payload for the orchestrator
@@ -43,10 +42,7 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 CWD=$(pwd)
 PROMPT="${USER_PROMPT:-}"
 
-# Pipe JSON to stdin of the hooks command
-printf '{"session_id":"%s","cwd":"%s","timestamp":"%s","prompt":"%s"}' \
+# Pipe JSON to stdin — orchestrator handles view creation on first call
+printf '{"session_id":"%s","cwd":"%s","timestamp":"%s","model":"kiro","prompt":"%s"}' \
   "$SESSION_ID" "$CWD" "$TIMESTAMP" "$PROMPT" \
   | atomic agent hooks kiro prompt-submit 2>/dev/null || true
-
-# Output context for the agent (stdout goes back to Kiro)
-echo "Atomic VCS session active. View: $(cat .atomic/current_view 2>/dev/null || echo 'unknown')"
