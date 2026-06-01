@@ -10,7 +10,7 @@ Automatic turn recording with AI provenance, intent tracking, and knowledge grap
 - **Every turn records with provenance** — model, vendor, session, turn number, causal decision graph
 - **Tool executions tracked** — reads, edits, shell calls captured in a provenance graph (IDE)
 - **Intent workflow** — AGENTS.md prompt guides problem-first development with vault intents
-- **Skills on demand** — `/atomic-vault` and `/code-intelligence` loaded when relevant
+- **Skills on demand** — `/atomic-vault`, `/atomic-vcs`, and `/code-intelligence` loaded when relevant
 - **Spec-driven integration** — hooks fire on task execution for Kiro's spec workflow
 
 ## Install
@@ -35,7 +35,7 @@ npx atomic-kiro
 
 ### What install does
 
-1. **Skills** — symlinks `/atomic-vault`, `/code-intelligence`, `/codebase-context`, and `/intent-builder` into `~/.kiro/skills/`
+1. **Skills** — symlinks `/atomic-vault`, `/atomic-vcs`, `/code-intelligence`, `/codebase-context`, and `/intent-builder` into `~/.kiro/skills/`
 2. **Steering** — symlinks `atomic-agent.md` into `~/.kiro/steering/` (always-included Atomic context)
 3. **Hooks** — prints instructions for configuring hooks in the Kiro IDE panel
 4. **AGENTS.md** — must be copied to each project root manually (Kiro auto-discovers it)
@@ -166,6 +166,7 @@ atomic agent attest
 | `AGENTS.md` | Agent prompt — copy to project roots for intent-per-turn workflow |
 | `steering/atomic-agent.md` | Always-included steering — Atomic VCS context for every interaction |
 | `skills/atomic-vault/` | Vault workflow skill (`/atomic-vault`) |
+| `skills/atomic-vcs/` | Repository inspection skill — status, log, change, diff (`/atomic-vcs`) |
 | `skills/code-intelligence/` | KG query patterns (`/code-intelligence`) |
 | `skills/codebase-context/` | Codebase exploration (`/codebase-context`) |
 | `skills/intent-builder/` | Intent construction (`/intent-builder`) |
@@ -197,6 +198,7 @@ Or manually:
 ```bash
 # Remove skills
 rm ~/.kiro/skills/atomic-vault/SKILL.md
+rm ~/.kiro/skills/atomic-vcs/SKILL.md
 rm ~/.kiro/skills/code-intelligence/SKILL.md
 rm ~/.kiro/skills/codebase-context/SKILL.md
 rm ~/.kiro/skills/intent-builder/SKILL.md

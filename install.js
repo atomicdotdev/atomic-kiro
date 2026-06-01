@@ -33,6 +33,10 @@ const SKILL_LINKS = [
     dst: "atomic-vault/SKILL.md",
   },
   {
+    src: "skills/atomic-vcs/SKILL.md",
+    dst: "atomic-vcs/SKILL.md",
+  },
+  {
     src: "skills/code-intelligence/SKILL.md",
     dst: "code-intelligence/SKILL.md",
   },
@@ -124,7 +128,11 @@ function unlinkFiles(links, targetDir, label) {
 
       // Try to remove parent directory if empty
       const dir = path.dirname(dstPath);
-      try { fs.rmdirSync(dir); } catch { /* not empty */ }
+      try {
+        fs.rmdirSync(dir);
+      } catch {
+        /* not empty */
+      }
     }
   }
 
@@ -132,22 +140,14 @@ function unlinkFiles(links, targetDir, label) {
 }
 
 function doInstall() {
-  // 1. Install hooks via atomic CLI (if supported)
-  const hasAtomic = tryExec("atomic --version");
-  if (hasAtomic) {
-    const installed = tryExec("atomic agent enable --agent kiro --global");
-    if (!silent) {
-      if (installed) {
-        console.log("  hooks: installed via atomic agent");
-      } else {
-        console.log("  hooks: configure manually in Kiro IDE (see README)");
-      }
-    }
-  } else {
-    if (!silent) {
-      console.warn("  hooks: skipped (atomic not found on PATH)");
-      console.warn("         install Atomic VCS first, then configure hooks in Kiro IDE");
-    }
+  // 1. Kiro hooks are written directly as .kiro/hooks/*.kiro.hook files
+  //    (step 4) and call `atomic agent hooks kiro <verb>` at runtime. Kiro has
+  //    no global settings file to merge into, so there is no
+  //    `atomic agent enable` step.
+  if (!silent && !tryExec("atomic --version")) {
+    console.warn(
+      "  note: 'atomic' not on PATH — install it so the hooks work at runtime",
+    );
   }
 
   // 2. Symlink skills
@@ -156,42 +156,157 @@ function doInstall() {
   // 3. Symlink steering
   const steering = linkFiles(STEERING_LINKS, STEERING_TARGET, "steering");
 
+  // 4. Write .kiro/hooks/ files into the current working directory (project)
+  const cwd = process.cwd();
+  const hooksWritten = installKiroHooks(cwd);
+  if (!silent)
+    console.log(
+      `  hooks: ${hooksWritten} hook files → ${path.join(cwd, ".kiro", "hooks")}/`,
+    );
+
   if (!silent) {
     console.log();
-    console.log(`✓ atomic-kiro installed (${skills.linked} skills, ${steering.linked} steering files linked)`);
+    console.log(
+      `✓ atomic-kiro installed (${skills.linked} skills, ${steering.linked} steering files linked)`,
+    );
     console.log();
-    console.log("Copy AGENTS.md into your project root to enable the agent prompt:");
-    console.log(`  cp ${path.join(PKG_DIR, "AGENTS.md")} /path/to/your/project/`);
+    console.log(
+      "Copy AGENTS.md into your project root to enable the agent prompt:",
+    );
+    console.log(
+      `  cp ${path.join(PKG_DIR, "AGENTS.md")} /path/to/your/project/`,
+    );
     console.log();
-    console.log("Configure hooks in Kiro IDE → Agent Steering & Skills panel:");
-    console.log(`  Prompt Submit  → Shell: ${path.join(PKG_DIR, "hooks", "prompt-submit.sh")}`);
-    console.log(`  Agent Stop     → Shell: ${path.join(PKG_DIR, "hooks", "agent-stop.sh")}`);
-    console.log(`  Pre Tool Use   → Shell: ${path.join(PKG_DIR, "hooks", "pre-tool-use.sh")}`);
-    console.log(`  Post Tool Use  → Shell: ${path.join(PKG_DIR, "hooks", "post-tool-use.sh")}`);
-    console.log(`  Post Task Exec → Shell: ${path.join(PKG_DIR, "hooks", "post-task-execution.sh")}`);
+    console.log("Or run from your project directory to install hooks there:");
+    console.log("  cd /path/to/your/project && npx atomic-kiro");
     console.log();
   }
 }
 
-function doUninstall() {
-  // 1. Remove hooks via atomic CLI
-  const hasAtomic = tryExec("atomic --version");
-  if (hasAtomic) {
-    tryExec("atomic agent disable --agent kiro --global");
-    if (!silent) console.log("  hooks: removed via atomic agent");
+const HOOK_SCRIPTS_DIR = path.join(PKG_DIR, "hooks");
+
+const KIRO_HOOK_DEFS = [
+  {
+    file: "atomic-prompt-submit.kiro.hook",
+    name: "Atomic Turn Start",
+    when: { type: "promptSubmit" },
+    script: "prompt-submit.sh",
+  },
+  {
+    file: "atomic-turn-stop.kiro.hook",
+    name: "Atomic Turn Stop",
+    when: { type: "agentStop" },
+    script: "agent-stop.sh",
+  },
+  // Per-tool hooks so the tool name is passed as an argument
+  {
+    file: "atomic-pre-tool-write.kiro.hook",
+    name: "Atomic Pre Tool Use (write)",
+    when: { type: "preToolUse", toolTypes: ["write"] },
+    script: "pre-tool-use.sh write",
+  },
+  {
+    file: "atomic-pre-tool-shell.kiro.hook",
+    name: "Atomic Pre Tool Use (shell)",
+    when: { type: "preToolUse", toolTypes: ["shell"] },
+    script: "pre-tool-use.sh shell",
+  },
+  {
+    file: "atomic-pre-tool-read.kiro.hook",
+    name: "Atomic Pre Tool Use (read)",
+    when: { type: "preToolUse", toolTypes: ["read"] },
+    script: "pre-tool-use.sh read",
+  },
+  {
+    file: "atomic-post-tool-write.kiro.hook",
+    name: "Atomic Post Tool Use (write)",
+    when: { type: "postToolUse", toolTypes: ["write"] },
+    script: "post-tool-use.sh write",
+  },
+  {
+    file: "atomic-post-tool-shell.kiro.hook",
+    name: "Atomic Post Tool Use (shell)",
+    when: { type: "postToolUse", toolTypes: ["shell"] },
+    script: "post-tool-use.sh shell",
+  },
+  {
+    file: "atomic-post-tool-read.kiro.hook",
+    name: "Atomic Post Tool Use (read)",
+    when: { type: "postToolUse", toolTypes: ["read"] },
+    script: "post-tool-use.sh read",
+  },
+  {
+    file: "atomic-post-task.kiro.hook",
+    name: "Atomic Post Task Execution",
+    when: { type: "postTaskExecution" },
+    script: "post-task-execution.sh",
+  },
+];
+
+function installKiroHooks(projectDir) {
+  const hooksDir = path.join(projectDir, ".kiro", "hooks");
+  fs.mkdirSync(hooksDir, { recursive: true });
+  let written = 0;
+  for (const def of KIRO_HOOK_DEFS) {
+    const hook = {
+      version: "1.0.0",
+      enabled: true,
+      name: def.name,
+      when: def.when,
+      then: {
+        type: "runCommand",
+        command: path.join(HOOK_SCRIPTS_DIR, def.script),
+      },
+    };
+    fs.writeFileSync(
+      path.join(hooksDir, def.file),
+      JSON.stringify(hook, null, 2) + "\n",
+    );
+    written++;
   }
+  return written;
+}
+
+function removeKiroHooks(projectDir) {
+  const hooksDir = path.join(projectDir, ".kiro", "hooks");
+  let removed = 0;
+  for (const def of KIRO_HOOK_DEFS) {
+    const hookPath = path.join(hooksDir, def.file);
+    if (fs.existsSync(hookPath)) {
+      fs.unlinkSync(hookPath);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+function doUninstall() {
+  // Kiro's hooks are project .kiro/hooks files (removed below) — there is no
+  // global `atomic agent` registration to undo.
 
   // 2. Remove skill symlinks
   const skillsRemoved = unlinkFiles(SKILL_LINKS, SKILLS_TARGET, "skills");
 
   // 3. Remove steering symlinks
-  const steeringRemoved = unlinkFiles(STEERING_LINKS, STEERING_TARGET, "steering");
+  const steeringRemoved = unlinkFiles(
+    STEERING_LINKS,
+    STEERING_TARGET,
+    "steering",
+  );
+
+  // 4. Remove .kiro/hooks files from current project
+  const hooksRemoved = removeKiroHooks(process.cwd());
+  if (!silent && hooksRemoved > 0)
+    console.log(
+      `  hooks: ${hooksRemoved} hook files removed from .kiro/hooks/`,
+    );
 
   if (!silent) {
     console.log();
-    console.log(`✓ atomic-kiro uninstalled (${skillsRemoved} skills, ${steeringRemoved} steering files removed)`);
+    console.log(
+      `✓ atomic-kiro uninstalled (${skillsRemoved} skills, ${steeringRemoved} steering files removed)`,
+    );
     console.log("  Note: AGENTS.md in project roots must be removed manually.");
-    console.log("  Note: Hook configurations in Kiro IDE must be removed manually.");
   }
 }
 

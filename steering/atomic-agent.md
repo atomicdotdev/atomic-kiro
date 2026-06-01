@@ -30,6 +30,8 @@ atomic view switch <name>      # Switch to a view
 atomic diff                    # Show differences
 ```
 
+For inspecting history, provenance, and AI attestation in depth (`status`, `log`, `change -p`/`-a`, `diff`), use the `/atomic-vcs` skill.
+
 ## Views (not branches)
 
 Views are change-set filters on a single canonical graph. All edges live in one global GRAPH table. A view determines which subset is visible by tracking which changes belong to it.

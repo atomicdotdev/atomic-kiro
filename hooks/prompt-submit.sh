@@ -26,15 +26,31 @@ fi
 # Resolve a stable session ID for this Kiro window.
 # Stored in .atomic/kiro_session so all hooks share the same session.
 # The orchestrator owns view creation — we just provide a stable session ID.
+#
+# If KIRO_SESSION_ID is set (by Kiro CLI), use it to detect new sessions.
+# A new KIRO_SESSION_ID means a new kiro chat session → new atomic session.
 SESSION_FILE=".atomic/kiro_session"
+KIRO_SID="${KIRO_SESSION_ID:-}"
+
+if [ -n "$KIRO_SID" ] && [ -f "$SESSION_FILE" ]; then
+  STORED_KIRO_SID=$(grep "^KIRO_SID=" "$SESSION_FILE" 2>/dev/null | cut -d= -f2 || true)
+  if [ "$KIRO_SID" != "$STORED_KIRO_SID" ]; then
+    # New kiro chat session — create a new atomic session
+    rm -f "$SESSION_FILE"
+  fi
+fi
+
 if [ -f "$SESSION_FILE" ]; then
-  SESSION_ID=$(cat "$SESSION_FILE")
+  SESSION_ID=$(head -1 "$SESSION_FILE")
 else
   # Use hex timestamp so extract_session_short produces a unique 4-char tag
-  # e.g. "a3f2b1c4-kiro" → tag "a3f2"
   HEX=$(printf '%08x' "$(date +%s)")
   SESSION_ID="${HEX}-kiro"
   echo "$SESSION_ID" > "$SESSION_FILE"
+  # Store the kiro CLI session ID for comparison on next invocation
+  if [ -n "$KIRO_SID" ]; then
+    echo "KIRO_SID=$KIRO_SID" >> "$SESSION_FILE"
+  fi
 fi
 
 # Build JSON payload for the orchestrator

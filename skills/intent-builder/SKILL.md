@@ -27,6 +27,57 @@ atomic vault intent create --title "Short title under 80 chars"
 
 Returns an intent ID (e.g., `ATOM-42`) and a file path under `.vault/intents/`. The file is a markdown template with placeholder sections. Your job is to fill them in.
 
+### Fill in the intent file (REQUIRED)
+
+After `create`, immediately do these steps in order:
+
+1. **Read** the intent file at the path returned by `create`
+2. **Replace EVERY `REPLACE` placeholder** — do not leave any. For each section:
+   - **Problem** — reframe the user's request as what's broken/missing and why it matters (2+ sentences)
+   - **Acceptance Criteria** — concrete checklist items a reviewer could verify
+   - **Scope In** — specific files/modules that will be touched
+   - **Scope Out** — what you're NOT doing (prevents scope creep)
+   - **Constraints** — any technical limits (can be "None" if truly none)
+   - **TODOs** — ordered tasks with file paths and verification criteria
+3. **Write the completed file back to disk using the write tool.** This step is critical — if you don't write the file, the intent stays as a template with REPLACE placeholders.
+4. **Sync** immediately after writing: `atomic vault sync` (persists your edits to the DB so they aren't overwritten by later commands)
+
+For simple tasks (single file change, obvious scope), keep sections brief but still fill them all in. A one-line problem statement and one acceptance criterion is fine — just don't leave `REPLACE`.
+
+Example for a simple task:
+
+```markdown
+## Problem
+
+The user's name is printed in green but should be red. The color is hardcoded in src/index.ts.
+
+## Acceptance Criteria
+
+- [ ] Running the CLI prints the user's name in red (ANSI escape code 31)
+
+## Scope
+
+**In:**
+- src/index.ts
+
+**Out:**
+- No other color changes
+
+## Constraints
+
+None
+
+## Dependencies
+
+None
+
+## TODOs
+
+- [ ] `KIRO-2/1` Change color escape code from green (32) to red (31) in src/index.ts
+  **Files:** `src/index.ts`
+  **Criteria:** Output uses `\x1b[31m` instead of `\x1b[32m`
+```
+
 Optional flags:
 - `-p high` — priority: `low`, `medium`, `high`, `critical`
 - `--assignee name` — who owns this
@@ -35,19 +86,29 @@ Optional flags:
 ### Show an intent
 
 ```
+atomic vault sync           # always sync first so you read fresh state
 atomic vault intent show ATOM-42
 atomic vault intent show ATOM-42 --json
 ```
 
-Use this to read back the current state before presenting to the user.
+Use this to read back the current state before presenting to the user. `show` reads from the vault **database**, not the file — without a `sync` first it renders the stale placeholder template instead of your edits.
 
 ### Confirm the intent
 
 ```
+atomic vault sync                                  # persist file edits first
 atomic vault intent update ATOM-42 --status planned
 ```
 
-Only run this after the user explicitly approves.
+Only run this after the user explicitly approves. Always `atomic vault sync` before `update` — `update` re-materializes the database copy over the file, so an unsynced `update` clobbers your edits with the stale template. `sync` is required in both IDE and CLI mode; it is not `atomic record`/`add`, and hooks do not do it for you.
+
+### Complete the intent
+
+After all TODOs are done:
+
+1. **Write** the intent file with TODOs checked off (`- [x]`)
+2. **Sync** the vault first: `atomic vault sync` (pushes your file edits to the DB)
+3. **Update** the status: `atomic vault intent update ATOM-42 --status done`
 
 ## The intent file
 
@@ -66,6 +127,33 @@ Checklist items that are testable — a reviewer or test suite could verify each
 
 Bad: "- [ ] Auth works"
 Good: "- [ ] OAuth2 authorization code flow with PKCE returns a valid JWT"
+
+### Simplification guard (run before you finalize)
+
+Whenever you pick an approach that is *simpler than* or *diverges from* a reference — the standard library, an existing implementation, a spec, or a prior version — the simpler choice almost always **drops a behavior the reference guaranteed**. Those dropped behaviors are where silent correctness gaps hide, and they propagate: an intent that never names the dropped behavior produces code *and* tests that share the same blind spot, so nothing catches it.
+
+For every "we'll use the simpler X" decision, do all three:
+
+1. **Name the reference** you're simplifying away from (e.g., `std::io::BufWriter::into_parts`).
+2. **Enumerate what the simpler choice drops** — the guarantees, edge cases, or states the reference handled that yours won't by default. Common culprits: interrupted/partial operations, error or panic states, round-trip fidelity, ordering, resource cleanup, concurrency, overflow/empty/boundary inputs.
+3. For each dropped behavior, pick **one** and write it down:
+   - **Pin it** — add an explicit acceptance criterion that preserves the behavior, or
+   - **Drop it on purpose** — record it under *Scope — Out* with the consequence stated, or
+   - **Ask** — if you can't decide, raise it as a user question. Don't guess.
+
+**A decision about API *shape* is not a decision about *behavior*.** Choosing signature `A` over signature `B` does not settle whether the implementation preserves the reference's edge-case handling. Call those out as separate items — the same signature can be implemented correctly or incorrectly.
+
+Worked example (real):
+
+> Decision: use tokio-flavored `into_parts(self) -> (W, Vec<u8>)` instead of std's `into_parts(self) -> (W, Result<Vec<u8>, WriterPanicked>)`.
+>
+> The *signature* is settled (and correct — tokio never flushes on drop, so `WriterPanicked` is meaningless). But the simpler form silently drops std's handling of a **partially flushed buffer**. That's a separate, behavioral question — resolve it explicitly:
+>
+> - [ ] `into_parts` drains already-written bytes so a round-trip never re-emits them — *pin it*, or
+> - **Out:** a round-trip after an interrupted flush may re-emit written bytes — *drop on purpose*, or
+> - Ask the user which they want.
+
+In the run that produced this guidance, step 3 was skipped for exactly that case: the signature question was asked and answered, the drain question never was, and the gap shipped invisibly. This section exists so that never happens silently again.
 
 ### Scope — In (required, at least 1)
 
