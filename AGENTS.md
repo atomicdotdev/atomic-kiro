@@ -81,7 +81,20 @@ For each such decision: **name the reference**, **enumerate what the simpler cho
 
 ### 3c. Execute the tasks
 
-The intent file IS your plan. Work through the TODOs in order, checking each off as you complete it. Do not deviate from the intent — if scope changes, update the intent file first.
+Work through the TODOs in order. After completing each one:
+
+1. **Verify** it meets its criteria — run the commands or checks specified in the TODO.
+2. **Edit the intent file** using your file editing tool to mark it done:
+   ```
+   - [ ] `PROJ-1/1` ...   →   - [x] `PROJ-1/1` ...
+   ```
+   Also check off any acceptance criteria that are now satisfied.
+3. **Sync** so the database stays current:
+   ```bash
+   atomic vault sync
+   ```
+
+**Use your file editing tool to check off tasks — not bash, not Python, not sed.** Raw file manipulation bypasses the vault.
 
 ### 4. Update the intent
 
