@@ -5,26 +5,29 @@ version = "1.0.0"
 [requires]
 atomic = ">=0.11.0"
 
-[[file]]
+[skills-source]
+package = "atomic-skills"
+
+[[skill]]
+src = "AGENTS.md"
+dst = "~/.kiro/steering/atomic-agent.md"
+
+[[skill]]
 src = "skills/atomic-vault/SKILL.md"
 dst = "~/.kiro/skills/atomic-vault/SKILL.md"
 
-[[file]]
+[[skill]]
 src = "skills/atomic-vcs/SKILL.md"
 dst = "~/.kiro/skills/atomic-vcs/SKILL.md"
 
-[[file]]
+[[skill]]
 src = "skills/code-intelligence/SKILL.md"
 dst = "~/.kiro/skills/code-intelligence/SKILL.md"
 
-[[file]]
-src = "skills/codebase-context/SKILL.md"
-dst = "~/.kiro/skills/codebase-context/SKILL.md"
-
-[[file]]
+[[skill]]
 src = "skills/intent-builder/SKILL.md"
 dst = "~/.kiro/skills/intent-builder/SKILL.md"
 
-[[file]]
-src = "steering/atomic-agent.md"
-dst = "~/.kiro/steering/atomic-agent.md"
+[[repo-file]]
+src = "AGENTS.md"
+dst = "AGENTS.md"
